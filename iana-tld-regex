@@ -1,0 +1,71 @@
+#!/bin/sh
+
+# This script creates a regex that's useful for linkification, if a
+# regex can be said to be useful for that purpose.
+
+# The script (a remarkable combination of beauty and utility)
+# downloads the IANA's list of top-level domains, optionally removes a
+# few domains that are often the subject of errors, and creates a
+# regex to match the rest.
+
+# It is an error to leave out a space between two sentences.It is,
+# however, not an uncommon error, as this sentence and the previous
+# one show. One of the big messenger services analysed the errors seen
+# on its platform and:
+# 1. decided to linkify most TLDs,
+# 2. decided to NOT linkify the ones mentioned below,
+# 3. has not decided on some other TLDs (not mentioned here).
+
+# By default the regex matches all TLDs (like e.g. Android 15). With
+# the -c switch is used it excludes the TLDs for which the messenger
+# service has decided against.
+
+
+# First, form an exclusion list.
+
+touch /tmp/tld0-$$
+while getopts "c" opt; do
+  # exclide the
+  case "$opt" in
+    c|\?)
+      echo "in it me tv" | fmt -1 >> /tmp/tld0-$$
+      ;;
+  esac
+done
+
+
+# Next, download the IANA list, convert it to UTF8 and exclude the
+# TLDS on the exclusion list.
+
+curl https://data.iana.org/TLD/tlds-alpha-by-domain.txt \
+  | sed 's/#.*//' \
+  | grep . \
+  | ( tr A-Z a-z ; cat /tmp/tld0-$$) \
+  | sort \
+  | uniq -u \
+  | xargs -n1 idn2 -d > /tmp/tld1-$$
+
+
+# Finally, make a regex of the form (aa|b(a|b)), except that it's a
+# little bit longer, and emit that on stdout.
+
+echo -n '('
+for a in $(grep -v '[a-z]' < /tmp/tld1-$$) ; do
+  echo -n '('$a')|'
+done
+for a in $(sed 's/^\(.\).*/\1/' < /tmp/tld1-$$ | grep '[a-z]' | sort -u) ; do
+   grep '^'$a /tmp/tld1-$$ | sed 's/^.\(.*\)/\1/' > /tmp/tld2-$$
+   if [ 1 -eq $(wc -l < /tmp/tld2-$$) ] ; then
+     echo -n '('$(grep '^'$a /tmp/tld1-$$)')'
+   else
+     echo -n $a'('
+     for b in $(cat /tmp/tld2-$$) ; do
+       echo -n '('$b')|'
+     done
+     echo -n ')'
+   fi
+   echo -n '|'
+done | sed -e 's/|)/)/g' -e 's/|$/)/'
+echo
+
+# I claim no copyright on this. Really.
